@@ -15,7 +15,7 @@ export ANDROID_HOME=/home/ubuntu/android-sdk
   --no-daemon
 ```
 
-The URL must use HTTPS. Cleartext HTTP is disabled by the manifest and `network_security_config.xml`. The recovered compatibility endpoint is the public LibreChat demo at `https://chat.librechat.ai`; it is not a user-owned production server. A self-hosted TezGPT deployment should replace it through `-PTEZGPT_API_BASE_URL=...`. The server must expose the authentication, configuration, conversation, chat, agent, and tool routes documented in the project server guide.
+The URL must use HTTPS. Cleartext HTTP is disabled by the manifest and `network_security_config.xml`. The verified live staging endpoint is `https://tezgpt-librechat.onrender.com`. Build the native APK against it with `-PTEZGPT_API_BASE_URL=https://tezgpt-librechat.onrender.com`. The older compatibility endpoint `https://chat.librechat.ai` is still available as a fallback in the legacy source, but it is not the deployed TezGPT service. The Render Free service is for staging/testing and may sleep when idle. The server must expose the authentication, configuration, conversation, chat, agent, and tool routes documented in the project server guide.
 
 ## Release build
 
@@ -51,6 +51,8 @@ The app currently provides native login, registration, logout, encrypted session
 Conversation history navigation, file picker/upload UI, memory screens, MCP management, approval dialogs, artifact viewing, OAuth providers, voice features, and scheduled-job controls remain planned native UI work. Their server-ready status is tracked in `docs/native-android/tezgpt-capability-matrix.md`.
 
 ## Server deployment
+
+The current Render staging service is available at `https://tezgpt-librechat.onrender.com`. Its public `/` and `/api/config` routes were verified with HTTP 200 after the MongoDB Atlas network allowlist was updated.
 
 Use the TezGPT server deployment files in the repository:
 
