@@ -8,11 +8,21 @@ if (
   typeof process === 'undefined' ||
   (process as typeof process & { browser?: boolean }).browser === true
 ) {
-  // process is only available in node context, or process.browser is true in client-side code
-  // This is to ensure that the BASE_URL is set correctly based on the <base>
-  // element in the HTML document, if it exists.
+  // GitHub Pages serves the static client from a different origin. In that build
+  // mode, route authenticated API calls to the configured HTTPS TezGPT server
+  // while retaining the page base for client assets and router navigation.
+  const configuredApiOrigin = document
+    .querySelector('meta[name="tezgpt-api-origin"]')
+    ?.getAttribute('content')
+    ?.trim();
+  if (configuredApiOrigin && /^https:\/\//i.test(configuredApiOrigin)) {
+    BASE_URL = configuredApiOrigin;
+  }
+  // The normal single-origin deployment uses the document base, if it exists.
+  if (!BASE_URL) {
   const baseEl = document.querySelector('base');
-  BASE_URL = baseEl?.getAttribute('href') || '/';
+    BASE_URL = baseEl?.getAttribute('href') || '/';
+  }
 }
 
 if (BASE_URL && BASE_URL.endsWith('/')) {

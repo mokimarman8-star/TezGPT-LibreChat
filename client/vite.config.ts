@@ -47,7 +47,7 @@ const QUERY_DEVTOOLS_CHUNK_MODULES = [
 ];
 
 export default defineConfig(({ command }) => ({
-  base: '',
+  base: process.env.VITE_GITHUB_PAGES === 'true' ? '/TezGPT-LibreChat/' : '',
   server: {
     allowedHosts:
       (process.env.VITE_ALLOWED_HOSTS && process.env.VITE_ALLOWED_HOSTS.split(',')) || [],
@@ -70,6 +70,16 @@ export default defineConfig(({ command }) => ({
   envPrefix: ['VITE_', 'SCRIPT_', 'DOMAIN_', 'ALLOW_', 'REACT_APP_THEME_'],
   plugins: [
     react(),
+    {
+      name: 'github-pages-base-href',
+      apply: 'build',
+      transformIndexHtml(html) {
+        if (process.env.VITE_GITHUB_PAGES !== 'true') {
+          return html;
+        }
+        return html.replace('<base href="/" />', '<base href="/TezGPT-LibreChat/" />');
+      },
+    },
     {
       name: 'node-polyfills-shims-resolver',
       resolveId(id) {

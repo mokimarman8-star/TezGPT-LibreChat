@@ -61,6 +61,7 @@
     "build:safe": "npx turbo run build --no-daemon",
     "frontend": "npm run build:data-provider && npm run build:data-schemas && npm run build:api && npm run build:client-package && cd client && npm run build",
     "frontend:ci": "npm run build:data-provider && npm run build:client-package && cd client && npm run build:ci",
+    "frontend:pages": "npm run build:data-provider && npm run build:client-package && cd client && cross-env NODE_ENV=production NODE_OPTIONS=--max-old-space-size=4096 vite build && node ./scripts/post-build.cjs",
     "frontend:dev": "cd client && npm run dev",
     "e2e:prepare": "npm run frontend",
     "e2e": "npm run e2e:prepare && playwright test --config=e2e/playwright.config.local.ts",
