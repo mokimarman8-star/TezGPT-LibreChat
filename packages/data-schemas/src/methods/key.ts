@@ -66,12 +66,11 @@ export function createKeyMethods(mongoose: typeof import('mongoose')): {
     try {
       return JSON.parse(userValues) as Record<string, string>;
     } catch (e) {
-      logger.error('[getUserKeyValues]', e);
-      throw new Error(
-        JSON.stringify({
-          type: ErrorTypes.INVALID_USER_KEY,
-        }),
-      );
+      // Older native clients stored a provider key as a raw string rather than
+      // the web client’s JSON object. Treat that value as apiKey so existing
+      // encrypted credentials remain usable for chat and model discovery.
+      logger.warn('[getUserKeyValues] treating legacy raw value as apiKey');
+      return { apiKey: userValues };
     }
   }
 

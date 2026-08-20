@@ -65,8 +65,20 @@ export async function initializeGoogle({
     }
   }
 
+  let userApiKey = userKey;
+  if (typeof userKey === 'string' && userKey.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(userKey) as { apiKey?: unknown };
+      if (typeof parsed.apiKey === 'string' && parsed.apiKey.trim()) {
+        userApiKey = parsed.apiKey;
+      }
+    } catch {
+      // Legacy raw API keys are intentionally supported.
+    }
+  }
+
   const credentials: GoogleCredentials = useUserProvidedGoogleKey
-    ? (userKey as GoogleCredentials)
+    ? ({ [AuthKeys.GOOGLE_API_KEY]: userApiKey } as GoogleCredentials)
     : {
         [AuthKeys.GOOGLE_SERVICE_KEY]: serviceKey,
         ...(!isVertexEndpoint && { [AuthKeys.GOOGLE_API_KEY]: GOOGLE_KEY }),

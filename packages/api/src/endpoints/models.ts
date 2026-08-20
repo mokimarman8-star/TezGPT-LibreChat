@@ -415,8 +415,16 @@ export async function getOpenAIModels(opts: GetOpenAIModelsOptions = {}): Promis
     key = 'OPENAI_MODELS';
   }
 
-  if (process.env[key]) {
+  // An authenticated user key takes precedence over the deployment catalog so
+  // the provider's live /models response can be discovered per user. The
+  // static environment list remains the fallback for deployments without a
+  // user key or for providers that do not expose discovery.
+  if (process.env[key] && !opts.openAIApiKey) {
     return splitAndTrim(process.env[key]);
+  }
+
+  if (opts.openAIApiKey) {
+    return (await fetchOpenAIModels(opts, models)) || models;
   }
 
   if (isUserProvided(resolveOpenAIApiKey(opts))) {
@@ -435,6 +443,7 @@ export async function getOpenAIModels(opts: GetOpenAIModelsOptions = {}): Promis
 export async function fetchAnthropicModels(
   opts: {
     user?: string;
+    apiKey?: string;
     skipCache?: boolean;
     headers?: Record<string, string> | null;
     userObject?: Partial<IUser>;
@@ -442,7 +451,7 @@ export async function fetchAnthropicModels(
   _models: string[] = [],
 ): Promise<string[]> {
   let models = _models.slice() ?? [];
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = opts.apiKey || process.env.ANTHROPIC_API_KEY;
   const anthropicBaseURL = 'https://api.anthropic.com/v1';
   let baseURL = anthropicBaseURL;
   const reverseProxyUrl = process.env.ANTHROPIC_REVERSE_PROXY;
@@ -483,6 +492,7 @@ export async function fetchAnthropicModels(
 export async function getAnthropicModels(
   opts: {
     user?: string;
+    apiKey?: string;
     vertexModels?: string[];
     headers?: Record<string, string> | null;
     userObject?: Partial<IUser>;
@@ -495,8 +505,12 @@ export async function getAnthropicModels(
     return opts.vertexModels;
   }
 
-  if (process.env.ANTHROPIC_MODELS) {
+  if (process.env.ANTHROPIC_MODELS && !opts.apiKey) {
     return splitAndTrim(process.env.ANTHROPIC_MODELS);
+  }
+
+  if (opts.apiKey) {
+    return await fetchAnthropicModels(opts, models);
   }
 
   if (isUserProvided(process.env.ANTHROPIC_API_KEY)) {
@@ -515,12 +529,51 @@ export async function getAnthropicModels(
  * Gets Google models from environment or defaults.
  * @returns Array of model IDs
  */
-export function getGoogleModels(): string[] {
+export function getGoogleModels(
+  opts: { apiKey?: string } = {},
+): string[] | Promise<string[]> {
   let models = defaultModels[EModelEndpoint.google];
-  if (process.env.GOOGLE_MODELS) {
+  if (process.env.GOOGLE_MODELS && !opts.apiKey) {
     models = splitAndTrim(process.env.GOOGLE_MODELS);
   }
-  return models;
+
+  if (!opts.apiKey) {
+    return models;
+  }
+
+  return (async () => {
+    try {
+      const discovered = new Set<string>();
+      let pageToken: string | undefined;
+      // Google returns at most 1,000 models per page. Keep a bounded maximum
+      // to avoid unbounded upstream work while still covering far beyond the
+      // provider's current public catalog.
+      for (let page = 0; page < 10 && discovered.size < 10000; page += 1) {
+        const response = await axios.get<{
+          models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+          nextPageToken?: string;
+        }>('https://generativelanguage.googleapis.com/v1beta/models', {
+          headers: { 'x-goog-api-key': opts.apiKey },
+          params: { pageSize: 1000, ...(pageToken ? { pageToken } : {}) },
+          timeout: 5000,
+        });
+        for (const model of response.data.models ?? []) {
+          if (model.name && (model.supportedGenerationMethods ?? []).includes('generateContent')) {
+            discovered.add(model.name.replace(/^models\//, ''));
+          }
+        }
+        pageToken = response.data.nextPageToken;
+        if (!pageToken) break;
+      }
+      return discovered.size > 0 ? Array.from(discovered).sort() : models;
+    } catch (error) {
+      logAxiosError({
+        message: 'Failed to fetch Google models; using configured catalog',
+        error: error as Error,
+      });
+      return models;
+    }
+  })();
 }
 
 /**

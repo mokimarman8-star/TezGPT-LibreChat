@@ -9,6 +9,16 @@ const {
   getGoogleModels,
 } = require('@librechat/api');
 const { getAppConfig } = require('./app');
+const { getUserKeyValues } = require('~/models');
+
+async function getUserProviderValues(userId, name) {
+  if (!userId) return {};
+  try {
+    return await getUserKeyValues({ userId, name });
+  } catch (_error) {
+    return {};
+  }
+}
 
 /**
  * Loads the default models for the application.
@@ -20,6 +30,11 @@ async function loadDefaultModels(req) {
   try {
     const appConfig = req.config ?? (await getAppConfig(getAppConfigOptionsFromUser(req.user)));
     const vertexConfig = appConfig?.endpoints?.[EModelEndpoint.anthropic]?.vertexConfig;
+    const [openAIUserValues, anthropicUserValues, googleUserValues] = await Promise.all([
+      getUserProviderValues(req.user?.id, EModelEndpoint.openAI),
+      getUserProviderValues(req.user?.id, EModelEndpoint.anthropic),
+      getUserProviderValues(req.user?.id, EModelEndpoint.google),
+    ]);
 
     /** Forward configured custom headers (endpoint over global `all`) so model
      *  fetches reach a gateway-fronted provider the same as chat requests. */
@@ -35,7 +50,12 @@ async function loadDefaultModels(req) {
 
     const [openAI, anthropic, azureOpenAI, assistants, azureAssistants, google, bedrock] =
       await Promise.all([
-        getOpenAIModels({ user: req.user.id, headers: openAIHeaders, userObject: req.user }).catch(
+          getOpenAIModels({
+            user: req.user.id,
+            headers: openAIHeaders,
+            userObject: req.user,
+            openAIApiKey: openAIUserValues.apiKey,
+          }).catch(
           (error) => {
             logger.error('Error fetching OpenAI models:', error);
             return [];
@@ -43,6 +63,7 @@ async function loadDefaultModels(req) {
         ),
         getAnthropicModels({
           user: req.user.id,
+          apiKey: anthropicUserValues.apiKey,
           vertexModels: vertexConfig?.modelNames,
           headers: anthropicHeaders,
           userObject: req.user,
@@ -62,7 +83,7 @@ async function loadDefaultModels(req) {
           logger.error('Error fetching Azure OpenAI Assistants API models:', error);
           return [];
         }),
-        Promise.resolve(getGoogleModels()).catch((error) => {
+        getGoogleModels({ apiKey: googleUserValues.apiKey }).catch((error) => {
           logger.error('Error getting Google models:', error);
           return [];
         }),

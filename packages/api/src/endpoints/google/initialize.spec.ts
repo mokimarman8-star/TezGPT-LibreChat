@@ -129,6 +129,25 @@ describe('initializeGoogle', () => {
     );
   });
 
+  it('extracts an API key from the native JSON credential format', async () => {
+    process.env.GOOGLE_KEY = 'user_provided';
+    const db = createDb();
+    (db.getUserKey as jest.Mock).mockResolvedValue(JSON.stringify({ apiKey: 'native-google-key' }));
+    const req = createReq();
+    req.body = { key: new Date(Date.now() + 60_000).toISOString() };
+
+    await initializeGoogle({
+      req,
+      endpoint: EModelEndpoint.google,
+      model_parameters: { model: 'gemini-2.5-flash' },
+      db,
+    });
+
+    expect(db.getUserKey).toHaveBeenCalledWith({ userId: 'user-1', name: EModelEndpoint.google });
+    const [credentials] = getGoogleConfigCall();
+    expect(credentials).toEqual({ [AuthKeys.GOOGLE_API_KEY]: 'native-google-key' });
+  });
+
   it('resolves configured headers at init (merged over endpoints.all) before getGoogleConfig', async () => {
     process.env.GOOGLE_KEY = 'test-api-key';
 

@@ -972,6 +972,46 @@ describe('getGoogleModels', () => {
     const models = getGoogleModels();
     expect(models).toEqual(['gemini-pro', 'bard']);
   });
+
+  it('discovers every paginated generateContent model for a user API key', async () => {
+    mockedAxios.get
+      .mockResolvedValueOnce({
+        data: {
+          models: [
+            { name: 'models/gemini-a', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/embedding-001', supportedGenerationMethods: ['embedContent'] },
+          ],
+          nextPageToken: 'page-2',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          models: [
+            { name: 'models/gemini-b', supportedGenerationMethods: ['generateContent'] },
+          ],
+        },
+      });
+
+    await expect(getGoogleModels({ apiKey: 'user-google-key' })).resolves.toEqual([
+      'gemini-a',
+      'gemini-b',
+    ]);
+    expect(mockedAxios.get).toHaveBeenNthCalledWith(
+      1,
+      'https://generativelanguage.googleapis.com/v1beta/models',
+      expect.objectContaining({
+        headers: { 'x-goog-api-key': 'user-google-key' },
+        params: { pageSize: 1000 },
+      }),
+    );
+    expect(mockedAxios.get).toHaveBeenNthCalledWith(
+      2,
+      'https://generativelanguage.googleapis.com/v1beta/models',
+      expect.objectContaining({
+        params: { pageSize: 1000, pageToken: 'page-2' },
+      }),
+    );
+  });
 });
 
 describe('getBedrockModels', () => {
