@@ -129,7 +129,9 @@ public final class ApiClient {
         JSONObject body = new JSONObject();
         try {
             body.put("name", endpoint == null ? "" : endpoint);
-            body.put("value", value == null ? "" : value);
+            JSONObject providerValue = new JSONObject();
+            providerValue.put("apiKey", value == null ? "" : value);
+            body.put("value", providerValue.toString());
             if (expiresAt == null) body.put("expiresAt", JSONObject.NULL);
             else body.put("expiresAt", expiresAt);
         } catch (Exception error) {
@@ -184,7 +186,7 @@ public final class ApiClient {
     }
 
     public void sendMessage(String text, String conversationId, String parentMessageId,
-                            String endpoint, String model, StreamCallback callback) {
+                            String endpoint, String model, String userKeyExpiry, StreamCallback callback) {
         executor.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
@@ -193,6 +195,9 @@ public final class ApiClient {
                 body.put("parentMessageId", parentMessageId == null ? "" : parentMessageId);
                 body.put("endpoint", endpoint == null ? "openAI" : endpoint);
                 body.put("model", model == null ? "" : model);
+                if (userKeyExpiry != null && !userKeyExpiry.trim().isEmpty()) {
+                    body.put("key", userKeyExpiry);
+                }
                 body.put("stream", true);
 
                 HttpURLConnection connection = open("POST", "/api/ask");

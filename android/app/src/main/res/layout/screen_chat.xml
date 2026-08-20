@@ -69,6 +69,17 @@
             android:background="@drawable/bg_secondary_button" />
     </LinearLayout>
 
+    <Button
+        android:id="@+id/coding_mode_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="14dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_secondary_button"
+        android:text="Coding mode: off"
+        android:textAllCaps="false"
+        android:textColor="@color/tezgpt_text" />
+
     <TextView
         android:id="@+id/chat_error"
         android:layout_width="match_parent"

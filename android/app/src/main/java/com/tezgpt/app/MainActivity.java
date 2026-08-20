@@ -19,6 +19,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.tezgpt.app.api.ApiClient;
+import com.tezgpt.app.storage.ProjectMemoryStore;
 import com.tezgpt.app.storage.SessionStore;
 
 import org.json.JSONArray;
@@ -29,6 +30,7 @@ import java.util.Arrays;
 public class MainActivity extends AppCompatActivity {
     private static final int FILE_PICKER_REQUEST = 9101;
     private SessionStore sessionStore;
+    private ProjectMemoryStore projectMemoryStore;
     private ApiClient apiClient;
     private LinearLayout messageContainer;
     private ScrollView messageScroll;
@@ -39,7 +41,9 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar chatProgress;
     private Spinner endpointSpinner;
     private Spinner modelSpinner;
+    private Button codingModeButton;
     private JSONObject serverModelCatalog;
+    private boolean codingMode;
     private String conversationId = "new";
     private String parentMessageId = "";
     private Uri selectedFileUri;
@@ -61,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         sessionStore = new SessionStore(this);
+        projectMemoryStore = new ProjectMemoryStore(this);
         apiClient = new ApiClient(sessionStore);
 
         if (!apiClient.isConfigured()) {
@@ -126,9 +131,7 @@ public class MainActivity extends AppCompatActivity {
         createAccount.setOnClickListener(v -> showRegister());
         applyLoginDefaults(createAccount, findViewById(R.id.social_login_container), findViewById(R.id.login_or_divider));
         apiClient.startupConfig(new ApiClient.Callback<JSONObject>() {
-            @Override public void onSuccess(JSONObject value) {
-                applyLoginConfig(value, createAccount, findViewById(R.id.social_login_container), findViewById(R.id.login_or_divider), error);
-            }
+            @Override public void onSuccess(JSONObject value) { applyLoginConfig(value, createAccount); }
             @Override public void onError(Exception ignored) { /* Keep the real email form available on transient config failure. */ }
         });
         signIn.setOnClickListener(v -> {
@@ -162,9 +165,8 @@ public class MainActivity extends AppCompatActivity {
         divider.setVisibility(View.GONE);
     }
 
-    /** Mirrors LibreChat Login.tsx gating from the server’s pre-login /api/config payload. */
-    private void applyLoginConfig(JSONObject config, Button createAccount, LinearLayout socialContainer,
-                                  TextView divider, TextView error) {
+    /** Native TezGPT uses local email/password account access only; no provider browser flow is shown. */
+    private void applyLoginConfig(JSONObject config, Button createAccount) {
         boolean emailLoginEnabled = config.optBoolean("emailLoginEnabled", true);
         boolean registrationEnabled = config.optBoolean("registrationEnabled", true);
         createAccount.setVisibility(registrationEnabled ? View.VISIBLE : View.GONE);
@@ -172,41 +174,6 @@ public class MainActivity extends AppCompatActivity {
             findViewById(R.id.email_input).setVisibility(View.GONE);
             findViewById(R.id.password_input).setVisibility(View.GONE);
             findViewById(R.id.sign_in_button).setVisibility(View.GONE);
-        }
-
-        if (!config.optBoolean("socialLoginEnabled", false)) return;
-        JSONArray order = config.optJSONArray("socialLogins");
-        String[] fallback = {"discord", "facebook", "github", "google", "apple", "openid", "saml"};
-        java.util.ArrayList<String> providers = new java.util.ArrayList<>();
-        if (order != null) {
-            for (int i = 0; i < order.length(); i++) {
-                String provider = order.optString(i, "").trim().toLowerCase();
-                if (!provider.isEmpty() && !providers.contains(provider)) providers.add(provider);
-            }
-        }
-        if (providers.isEmpty()) providers.addAll(Arrays.asList(fallback));
-        java.util.LinkedHashMap<String, String> labels = new java.util.LinkedHashMap<>();
-        labels.put("discord", "Continue with Discord");
-        labels.put("facebook", "Continue with Facebook");
-        labels.put("github", "Continue with GitHub");
-        labels.put("google", "Continue with Google");
-        labels.put("apple", "Continue with Apple");
-        labels.put("openid", config.optString("openidLabel", "Continue with OpenID"));
-        labels.put("saml", config.optString("samlLabel", "Continue with SAML"));
-
-        for (String provider : providers) {
-            boolean enabled = config.optBoolean(provider + "LoginEnabled", false);
-            if (!enabled) continue;
-            Button providerButton = actionButton(labels.get(provider), false);
-            providerButton.setContentDescription(labels.get(provider));
-            // Do not silently launch a browser: native provider SDK/client IDs are required.
-            providerButton.setOnClickListener(v -> showError(error,
-                    labels.get(provider) + " requires native Android provider configuration; use email/password until that SDK is configured."));
-            socialContainer.addView(providerButton, marginParams(0, 8, 0, 0));
-        }
-        if (socialContainer.getChildCount() > 0) {
-            divider.setVisibility(View.VISIBLE);
-            socialContainer.setVisibility(View.VISIBLE);
         }
     }
 
@@ -266,6 +233,15 @@ public class MainActivity extends AppCompatActivity {
         chatProgress = findViewById(R.id.chat_progress);
         endpointSpinner = findViewById(R.id.endpoint_spinner);
         modelSpinner = findViewById(R.id.model_spinner);
+        codingModeButton = findViewById(R.id.coding_mode_button);
+        codingMode = projectMemoryStore.isCodingModeEnabled();
+        updateCodingModeButton();
+        codingModeButton.setOnClickListener(v -> {
+            codingMode = !codingMode;
+            projectMemoryStore.setCodingModeEnabled(codingMode);
+            updateCodingModeButton();
+            updateModelsForEndpoint(String.valueOf(endpointSpinner.getSelectedItem()));
+        });
         endpointSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
                 updateModelsForEndpoint(String.valueOf(parent.getItemAtPosition(position)));
@@ -366,9 +342,30 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
+        if (codingMode && !models.isEmpty()) {
+            java.util.LinkedHashSet<String> codingModels = new java.util.LinkedHashSet<>();
+            for (String model : models) if (isCodingCapableModel(model)) codingModels.add(model);
+            if (!codingModels.isEmpty()) models = codingModels;
+        }
         if (models.isEmpty()) models.add(getString(R.string.model_default));
         modelSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
                 new java.util.ArrayList<>(models)));
+    }
+
+    private boolean isCodingCapableModel(String model) {
+        String value = model == null ? "" : model.toLowerCase(java.util.Locale.ROOT);
+        return value.contains("code") || value.contains("codex") || value.contains("coder")
+                || value.contains("gpt") || value.contains("claude") || value.contains("gemini")
+                || value.contains("qwen") || value.contains("deepseek") || value.contains("mistral")
+                || value.contains("llama") || value.contains("command") || value.matches(".*\\bo[0-9].*");
+    }
+
+    private void updateCodingModeButton() {
+        if (codingModeButton == null) return;
+        codingModeButton.setText(codingMode ? "Coding mode: on" : "Coding mode: off");
+        codingModeButton.setContentDescription(codingMode
+                ? "Coding Mode is on. Showing coding-capable models from your server catalog."
+                : "Coding Mode is off.");
     }
 
     /* Legacy fallback parser retained only as a defensive reference for unusual servers. */
@@ -856,14 +853,30 @@ public class MainActivity extends AppCompatActivity {
         String endpoint = selectedEndpoint.equals(getString(R.string.endpoint_default)) ? "" : selectedEndpoint;
         String selectedModel = String.valueOf(modelSpinner.getSelectedItem());
         String model = selectedModel.equals(getString(R.string.model_default)) ? "" : selectedModel;
+        projectMemoryStore.recordMessage(conversationId, "user", prompt, endpoint, model, codingMode);
 
-        apiClient.sendMessage(prompt, conversationId, parentMessageId, endpoint, model,
+        apiClient.userKeyExpiry(endpoint, new ApiClient.Callback<JSONObject>() {
+            @Override public void onSuccess(JSONObject keyState) {
+                sendNativeChat(prompt, endpoint, model, keyState.optString("expiresAt", ""), assistant);
+            }
+            @Override public void onError(Exception error) {
+                // Endpoints backed by a server credential do not need a user-key
+                // expiry, so continue without it and let the server choose safely.
+                sendNativeChat(prompt, endpoint, model, "", assistant);
+            }
+        });
+    }
+
+    private void sendNativeChat(String prompt, String endpoint, String model, String userKeyExpiry,
+                                TextView assistant) {
+        apiClient.sendMessage(prompt, conversationId, parentMessageId, endpoint, model, userKeyExpiry,
                 new ApiClient.StreamCallback() {
                     @Override public void onChunk(String text) {
                         assistant.append(text);
                         messageScroll.post(() -> messageScroll.fullScroll(View.FOCUS_DOWN));
                     }
                     @Override public void onComplete(String fullText) {
+                        projectMemoryStore.recordMessage(conversationId, "assistant", fullText, endpoint, model, codingMode);
                         sendButton.setEnabled(true);
                         chatProgress.setVisibility(View.GONE);
                         messageScroll.post(() -> messageScroll.fullScroll(View.FOCUS_DOWN));
