@@ -86,6 +86,24 @@
             android:textColor="@color/tezgpt_white"
             android:textSize="16sp" />
 
+        <TextView
+            android:id="@+id/login_or_divider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:text="OR"
+            android:textColor="@color/tezgpt_text_muted"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/social_login_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone" />
+
         <Button
             android:id="@+id/create_account_button"
             android:layout_width="match_parent"

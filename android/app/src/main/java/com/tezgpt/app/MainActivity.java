@@ -39,6 +39,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar chatProgress;
     private Spinner endpointSpinner;
     private Spinner modelSpinner;
+    private JSONObject serverModelCatalog;
     private String conversationId = "new";
     private String parentMessageId = "";
     private Uri selectedFileUri;
@@ -123,6 +124,13 @@ public class MainActivity extends AppCompatActivity {
         ProgressBar progress = findViewById(R.id.login_progress);
 
         createAccount.setOnClickListener(v -> showRegister());
+        applyLoginDefaults(createAccount, findViewById(R.id.social_login_container), findViewById(R.id.login_or_divider));
+        apiClient.startupConfig(new ApiClient.Callback<JSONObject>() {
+            @Override public void onSuccess(JSONObject value) {
+                applyLoginConfig(value, createAccount, findViewById(R.id.social_login_container), findViewById(R.id.login_or_divider), error);
+            }
+            @Override public void onError(Exception ignored) { /* Keep the real email form available on transient config failure. */ }
+        });
         signIn.setOnClickListener(v -> {
             String emailValue = email.getText().toString().trim();
             String passwordValue = password.getText().toString();
@@ -146,6 +154,60 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
         });
+    }
+
+    private void applyLoginDefaults(Button createAccount, LinearLayout socialContainer, TextView divider) {
+        createAccount.setVisibility(View.VISIBLE);
+        socialContainer.setVisibility(View.GONE);
+        divider.setVisibility(View.GONE);
+    }
+
+    /** Mirrors LibreChat Login.tsx gating from the server’s pre-login /api/config payload. */
+    private void applyLoginConfig(JSONObject config, Button createAccount, LinearLayout socialContainer,
+                                  TextView divider, TextView error) {
+        boolean emailLoginEnabled = config.optBoolean("emailLoginEnabled", true);
+        boolean registrationEnabled = config.optBoolean("registrationEnabled", true);
+        createAccount.setVisibility(registrationEnabled ? View.VISIBLE : View.GONE);
+        if (!emailLoginEnabled) {
+            findViewById(R.id.email_input).setVisibility(View.GONE);
+            findViewById(R.id.password_input).setVisibility(View.GONE);
+            findViewById(R.id.sign_in_button).setVisibility(View.GONE);
+        }
+
+        if (!config.optBoolean("socialLoginEnabled", false)) return;
+        JSONArray order = config.optJSONArray("socialLogins");
+        String[] fallback = {"discord", "facebook", "github", "google", "apple", "openid", "saml"};
+        java.util.ArrayList<String> providers = new java.util.ArrayList<>();
+        if (order != null) {
+            for (int i = 0; i < order.length(); i++) {
+                String provider = order.optString(i, "").trim().toLowerCase();
+                if (!provider.isEmpty() && !providers.contains(provider)) providers.add(provider);
+            }
+        }
+        if (providers.isEmpty()) providers.addAll(Arrays.asList(fallback));
+        java.util.LinkedHashMap<String, String> labels = new java.util.LinkedHashMap<>();
+        labels.put("discord", "Continue with Discord");
+        labels.put("facebook", "Continue with Facebook");
+        labels.put("github", "Continue with GitHub");
+        labels.put("google", "Continue with Google");
+        labels.put("apple", "Continue with Apple");
+        labels.put("openid", config.optString("openidLabel", "Continue with OpenID"));
+        labels.put("saml", config.optString("samlLabel", "Continue with SAML"));
+
+        for (String provider : providers) {
+            boolean enabled = config.optBoolean(provider + "LoginEnabled", false);
+            if (!enabled) continue;
+            Button providerButton = actionButton(labels.get(provider), false);
+            providerButton.setContentDescription(labels.get(provider));
+            // Do not silently launch a browser: native provider SDK/client IDs are required.
+            providerButton.setOnClickListener(v -> showError(error,
+                    labels.get(provider) + " requires native Android provider configuration; use email/password until that SDK is configured."));
+            socialContainer.addView(providerButton, marginParams(0, 8, 0, 0));
+        }
+        if (socialContainer.getChildCount() > 0) {
+            divider.setVisibility(View.VISIBLE);
+            socialContainer.setVisibility(View.VISIBLE);
+        }
     }
 
     private void showRegister() {
@@ -204,11 +266,27 @@ public class MainActivity extends AppCompatActivity {
         chatProgress = findViewById(R.id.chat_progress);
         endpointSpinner = findViewById(R.id.endpoint_spinner);
         modelSpinner = findViewById(R.id.model_spinner);
+        endpointSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                updateModelsForEndpoint(String.valueOf(parent.getItemAtPosition(position)));
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
 
         configureDefaultSpinners();
+        // LibreChat separates pre/login startup flags, endpoint configuration, and model catalog.
+        // Load all three native, exactly as the web client does, instead of inventing model names.
         apiClient.startupConfig(new ApiClient.Callback<JSONObject>() {
             @Override public void onSuccess(JSONObject value) { applyServerConfig(value); }
             @Override public void onError(Exception error) { /* Keep safe fallback selectors. */ }
+        });
+        apiClient.aiEndpoints(new ApiClient.Callback<JSONObject>() {
+            @Override public void onSuccess(JSONObject value) { applyEndpointConfig(value); }
+            @Override public void onError(Exception error) { /* Keep fallback endpoint only if unavailable. */ }
+        });
+        apiClient.models(new ApiClient.Callback<JSONObject>() {
+            @Override public void onSuccess(JSONObject value) { applyModelCatalog(value); }
+            @Override public void onError(Exception error) { /* Keep fallback model only if unavailable. */ }
         });
 
         findViewById(R.id.new_chat_button).setOnClickListener(v -> clearConversation());
@@ -224,38 +302,96 @@ public class MainActivity extends AppCompatActivity {
 
     private void configureDefaultSpinners() {
         endpointSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                Arrays.asList("openAI", "anthropic", "google", "custom")));
+                Arrays.asList(getString(R.string.endpoint_default))));
         modelSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                Arrays.asList(getString(R.string.model_default), "gpt-4o-mini", "claude-sonnet", "gemini-2.5-flash")));
+                Arrays.asList(getString(R.string.model_default))));
     }
 
+    /** Apply only startup flags; model/provider data comes from the dedicated real routes. */
     private void applyServerConfig(JSONObject config) {
+        if (config == null) return;
+        String title = config.optString("appTitle", "");
+        if (!title.isEmpty()) {
+            TextView shellTitle = findViewById(R.id.shell_title);
+            if (shellTitle != null && getString(R.string.app_name).equals(shellTitle.getText().toString())) {
+                shellTitle.setText(title);
+            }
+        }
+    }
+
+    /** `/api/endpoints` returns a map keyed by endpoint/provider name. */
+    private void applyEndpointConfig(JSONObject endpointConfig) {
+        if (endpointConfig == null || endpointSpinner == null) return;
         java.util.ArrayList<String> endpoints = new java.util.ArrayList<>();
-        endpoints.add(getString(R.string.endpoint_default));
-        JSONObject endpointConfig = config.optJSONObject("endpoints");
-        if (endpointConfig != null) {
-            java.util.Iterator<String> keys = endpointConfig.keys();
-            while (keys.hasNext()) endpoints.add(keys.next());
+        java.util.Iterator<String> keys = endpointConfig.keys();
+        while (keys.hasNext()) {
+            String endpoint = keys.next();
+            if (!endpoint.isEmpty() && !endpoints.contains(endpoint)) endpoints.add(endpoint);
         }
-        JSONArray endpointArray = config.optJSONArray("endpoints");
-        if (endpointArray != null) {
-            for (int i = 0; i < endpointArray.length(); i++) {
-                String endpoint = endpointArray.optString(i, "");
-                if (!endpoint.isEmpty() && !endpoints.contains(endpoint)) endpoints.add(endpoint);
-            }
-        }
-        java.util.ArrayList<String> models = new java.util.ArrayList<>();
-        models.add(getString(R.string.model_default));
-        JSONArray modelArray = config.optJSONArray("models");
-        if (modelArray != null) {
-            for (int i = 0; i < modelArray.length(); i++) {
-                Object item = modelArray.opt(i);
-                String model = item instanceof JSONObject ? ((JSONObject) item).optString("model", ((JSONObject) item).optString("name", "")) : String.valueOf(item);
-                if (!model.isEmpty() && !models.contains(model)) models.add(model);
-            }
-        }
+        if (endpoints.isEmpty()) endpoints.add(getString(R.string.endpoint_default));
         endpointSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, endpoints));
-        modelSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, models));
+    }
+
+    /** `/api/models` returns `{ endpointName: [modelName, ...] }`; preserve all endpoint models. */
+    private void applyModelCatalog(JSONObject modelCatalog) {
+        if (modelCatalog == null || modelSpinner == null) return;
+        serverModelCatalog = modelCatalog;
+        updateModelsForEndpoint(endpointSpinner == null ? "" : String.valueOf(endpointSpinner.getSelectedItem()));
+    }
+
+    private void updateModelsForEndpoint(String endpoint) {
+        if (modelSpinner == null) return;
+        java.util.LinkedHashSet<String> models = new java.util.LinkedHashSet<>();
+        JSONArray endpointModels = serverModelCatalog == null ? null : serverModelCatalog.optJSONArray(endpoint);
+        if (endpointModels != null) {
+            for (int i = 0; i < endpointModels.length(); i++) {
+                Object item = endpointModels.opt(i);
+                String model = item instanceof JSONObject
+                        ? ((JSONObject) item).optString("model", ((JSONObject) item).optString("name", ""))
+                        : String.valueOf(item == null ? "" : item);
+                if (!model.trim().isEmpty()) models.add(model.trim());
+            }
+        }
+        if (models.isEmpty() && serverModelCatalog != null) {
+            java.util.Iterator<String> keys = serverModelCatalog.keys();
+            while (keys.hasNext()) {
+                JSONArray values = serverModelCatalog.optJSONArray(keys.next());
+                if (values == null) continue;
+                for (int i = 0; i < values.length(); i++) {
+                    Object item = values.opt(i);
+                    String model = item instanceof JSONObject
+                            ? ((JSONObject) item).optString("model", ((JSONObject) item).optString("name", ""))
+                            : String.valueOf(item == null ? "" : item);
+                    if (!model.trim().isEmpty()) models.add(model.trim());
+                }
+            }
+        }
+        if (models.isEmpty()) models.add(getString(R.string.model_default));
+        modelSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                new java.util.ArrayList<>(models)));
+    }
+
+    /* Legacy fallback parser retained only as a defensive reference for unusual servers. */
+    private void applyFlattenedModelCatalog(JSONObject modelCatalog) {
+        if (modelCatalog == null || modelSpinner == null) return;
+        java.util.LinkedHashSet<String> models = new java.util.LinkedHashSet<>();
+        java.util.Iterator<String> endpointKeys = modelCatalog.keys();
+        while (endpointKeys.hasNext()) {
+            Object raw = modelCatalog.opt(endpointKeys.next());
+            if (raw instanceof JSONArray) {
+                JSONArray values = (JSONArray) raw;
+                for (int i = 0; i < values.length(); i++) {
+                    Object item = values.opt(i);
+                    String model = item instanceof JSONObject
+                            ? ((JSONObject) item).optString("model", ((JSONObject) item).optString("name", ""))
+                            : String.valueOf(item == null ? "" : item);
+                    if (!model.trim().isEmpty()) models.add(model.trim());
+                }
+            }
+        }
+        if (models.isEmpty()) models.add(getString(R.string.model_default));
+        java.util.ArrayList<String> options = new java.util.ArrayList<>(models);
+        modelSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, options));
     }
 
     private void configureDrawer(DrawerLayout drawer) {

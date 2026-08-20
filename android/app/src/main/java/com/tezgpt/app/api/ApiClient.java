@@ -114,6 +114,16 @@ public final class ApiClient {
         executeJson("GET", "/api/config", null, callback);
     }
 
+    /** Real LibreChat endpoint/provider configuration used by the web ModelSelect flow. */
+    public void aiEndpoints(Callback<JSONObject> callback) {
+        executeJson("GET", "/api/endpoints", null, callback);
+    }
+
+    /** Real LibreChat model catalog. Response is normally a map keyed by endpoint name. */
+    public void models(Callback<JSONObject> callback) {
+        executeJson("GET", "/api/models", null, callback);
+    }
+
     public void conversations(Callback<JSONArray> callback) {
         executeJson("GET", "/api/convos?limit=50", null, new Callback<JSONObject>() {
             @Override public void onSuccess(JSONObject value) {
