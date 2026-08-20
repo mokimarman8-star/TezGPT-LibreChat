@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-labelledby="title desc">
+  <title id="title">TezGPT</title>
+  <desc id="desc">TezGPT green mark</desc>
+  <rect width="192" height="192" rx="42" fill="#10A37F"/>
+  <path d="M42 52h108v25h-39v63H81V77H42z" fill="#fff"/>
+  <circle cx="143" cy="141" r="12" fill="#0E8F70"/>
+</svg>

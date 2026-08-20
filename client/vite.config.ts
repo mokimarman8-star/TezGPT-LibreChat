@@ -99,6 +99,7 @@ export default defineConfig(({ command }) => ({
       workbox: {
         globPatterns: [
           '**/*.{js,css,html}',
+          'assets/tezgpt-mark.svg',
           'assets/favicon*.png',
           'assets/icon-*.png',
           'assets/apple-touch-icon*.png',
@@ -140,16 +141,16 @@ export default defineConfig(({ command }) => ({
       },
       includeAssets: [],
       manifest: {
-        name: 'LibreChat',
-        short_name: 'LibreChat',
+        name: 'TezGPT',
+        short_name: 'TezGPT',
         display: 'standalone',
         background_color: '#000000',
         theme_color: '#009688',
         icons: [
           {
-            src: 'assets/favicon-32x32.png',
-            sizes: '32x32',
-            type: 'image/png',
+            src: 'assets/tezgpt-mark.svg',
+            sizes: '192x192',
+            type: 'image/svg+xml',
           },
           {
             src: 'assets/favicon-16x16.png',
