@@ -47,10 +47,46 @@
       loadingContainerStyle.innerHTML = `
         #loading-container {
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
           height: 100vh;
           background-color: ${backgroundColor};
+          color: ${backgroundColor === '#0d0d0d' ? '#f5f5f5' : '#171717'};
+          font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          text-align: center;
+        }
+        #loading-container .tezgpt-boot-mark {
+          width: 42px;
+          height: 42px;
+          margin-bottom: 18px;
+          border: 2px solid #10a37f;
+          border-radius: 14px 14px 4px 14px;
+          box-shadow: inset 0 0 0 7px ${backgroundColor};
+          transform: rotate(45deg);
+        }
+        #loading-container .tezgpt-boot-name {
+          font-size: 22px;
+          font-weight: 800;
+          letter-spacing: 0.18em;
+          margin-left: 0.18em;
+        }
+        #loading-container .tezgpt-boot-status {
+          margin-top: 10px;
+          color: #10a37f;
+          font-size: 12px;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        @media (prefers-reduced-motion: no-preference) {
+          #loading-container .tezgpt-boot-mark {
+            animation: tezgpt-boot-pulse 1.5s ease-in-out infinite;
+          }
+        }
+        @keyframes tezgpt-boot-pulse {
+          0%, 100% { opacity: 0.6; transform: rotate(45deg) scale(0.94); }
+          50% { opacity: 1; transform: rotate(45deg) scale(1); }
         }
       `;
       document.head.appendChild(loadingContainerStyle);
@@ -198,7 +234,11 @@
   </head>
   <body>
     <div id="root">
-      <div id="loading-container"></div>
+      <div id="loading-container" role="status" aria-live="polite">
+        <div class="tezgpt-boot-mark" aria-hidden="true"></div>
+        <div class="tezgpt-boot-name">TEZGPT</div>
+        <div class="tezgpt-boot-status">Loading secure workspace</div>
+      </div>
     </div>
   </body>
 </html>

@@ -200,6 +200,7 @@ export default defineConfig(({ command }) => ({
   },
   publicDir: command === 'serve' ? './public' : false,
   build: {
+    modulePreload: process.env.VITE_GITHUB_PAGES !== 'true',
     sourcemap: buildSourceMap,
     outDir: './dist',
     minify: 'oxc',

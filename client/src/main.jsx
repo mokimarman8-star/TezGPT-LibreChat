@@ -1,11 +1,9 @@
 import './polyfills/regeneratorRuntime';
 import { createRoot } from 'react-dom/client';
 import { initializeI18n } from './locales/i18n';
-import App from './App';
 import '@librechat/client/style.css';
 import './style.css';
 import './mobile.css';
-import { ApiErrorBoundaryProvider } from './hooks/ApiErrorBoundaryContext';
 import 'katex/dist/katex.min.css';
 import 'katex/dist/contrib/copy-tex.js';
 
@@ -20,6 +18,13 @@ const root = createRoot(container);
 
 async function bootstrap() {
   await initializeI18n();
+
+  // Keep the lightweight HTML boot shell visible while GitHub Pages downloads
+  // optional editor, diagram, and markdown application chunks.
+  const [{ default: App }, { ApiErrorBoundaryProvider }] = await Promise.all([
+    import('./App'),
+    import('./hooks/ApiErrorBoundaryContext'),
+  ]);
 
   const capacitor = window.Capacitor;
   const nativePermissions = capacitor?.Plugins?.NativePermissions;
@@ -36,9 +41,13 @@ async function bootstrap() {
 
 bootstrap().catch((error) => {
   console.error('[i18n] Failed to initialize before render', error);
-  root.render(
-    <ApiErrorBoundaryProvider>
-      <App />
-    </ApiErrorBoundaryProvider>,
+  import('./App').then(({ default: App }) =>
+    import('./hooks/ApiErrorBoundaryContext').then(({ ApiErrorBoundaryProvider }) =>
+      root.render(
+        <ApiErrorBoundaryProvider>
+          <App />
+        </ApiErrorBoundaryProvider>,
+      ),
+    ),
   );
 });
