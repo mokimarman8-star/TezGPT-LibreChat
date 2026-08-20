@@ -124,6 +124,32 @@ public final class ApiClient {
         executeJson("GET", "/api/models", null, callback);
     }
 
+    /** Save a user-provided provider credential through the real authenticated key route. */
+    public void saveUserKey(String endpoint, String value, Long expiresAt, Callback<JSONObject> callback) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("name", endpoint == null ? "" : endpoint);
+            body.put("value", value == null ? "" : value);
+            if (expiresAt == null) body.put("expiresAt", JSONObject.NULL);
+            else body.put("expiresAt", expiresAt);
+        } catch (Exception error) {
+            callback.onError(error);
+            return;
+        }
+        executeJson("PUT", "/api/keys", body, callback);
+    }
+
+    /** Return only expiry metadata; the server never returns the stored secret. */
+    public void userKeyExpiry(String endpoint, Callback<JSONObject> callback) {
+        String encoded = java.net.URLEncoder.encode(endpoint == null ? "" : endpoint, java.nio.charset.StandardCharsets.UTF_8);
+        executeJson("GET", "/api/keys?name=" + encoded, null, callback);
+    }
+
+    public void revokeUserKey(String endpoint, Callback<JSONObject> callback) {
+        String encoded = java.net.URLEncoder.encode(endpoint == null ? "" : endpoint, java.nio.charset.StandardCharsets.UTF_8);
+        executeJson("DELETE", "/api/keys/" + encoded, null, callback);
+    }
+
     public void conversations(Callback<JSONArray> callback) {
         executeJson("GET", "/api/convos?limit=50", null, new Callback<JSONObject>() {
             @Override public void onSuccess(JSONObject value) {

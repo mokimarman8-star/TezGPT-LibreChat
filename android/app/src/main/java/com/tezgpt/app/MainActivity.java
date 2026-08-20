@@ -545,6 +545,81 @@ public class MainActivity extends AppCompatActivity {
         });
         page.addView(saveServer, matchParams());
 
+        TextView providerHeading = text("Provider API keys", 16, true);
+        page.addView(providerHeading, marginParams(0, 22, 0, 6));
+        TextView providerHelp = text("Enter a key for an endpoint configured for user-provided credentials. The key is sent only to your TezGPT server.", 13, false);
+        providerHelp.setTextColor(getColor(R.color.tezgpt_text_muted));
+        page.addView(providerHelp, marginParams(0, 0, 0, 8));
+        Spinner keyEndpointSpinner = new Spinner(this);
+        keyEndpointSpinner.setBackgroundResource(R.drawable.bg_secondary_button);
+        page.addView(keyEndpointSpinner, marginParams(0, 0, 0, 8));
+        EditText providerKey = new EditText(this);
+        providerKey.setSingleLine(true);
+        providerKey.setHint("Provider API key");
+        providerKey.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        providerKey.setBackgroundResource(R.drawable.bg_input);
+        page.addView(providerKey, marginParams(0, 0, 0, 8));
+        TextView keyStatus = text("No key status loaded.", 13, false);
+        keyStatus.setTextColor(getColor(R.color.tezgpt_text_muted));
+        page.addView(keyStatus, marginParams(0, 0, 0, 8));
+        LinearLayout keyActions = new LinearLayout(this);
+        keyActions.setOrientation(LinearLayout.HORIZONTAL);
+        Button saveKey = actionButton("Save key", true);
+        Button revokeKey = actionButton("Revoke", false);
+        keyActions.addView(saveKey, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayout.LayoutParams revokeParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        revokeParams.setMargins(8, 0, 0, 0);
+        keyActions.addView(revokeKey, revokeParams);
+        page.addView(keyActions, matchParams());
+
+        apiClient.aiEndpoints(new ApiClient.Callback<JSONObject>() {
+            @Override public void onSuccess(JSONObject endpointConfig) {
+                java.util.ArrayList<String> names = new java.util.ArrayList<>();
+                java.util.Iterator<String> keys = endpointConfig.keys();
+                while (keys.hasNext()) names.add(keys.next());
+                if (names.isEmpty()) names.add(getString(R.string.endpoint_default));
+                keyEndpointSpinner.setAdapter(new ArrayAdapter<>(MainActivity.this,
+                        android.R.layout.simple_spinner_dropdown_item, names));
+                android.widget.AdapterView.OnItemSelectedListener listener = new android.widget.AdapterView.OnItemSelectedListener() {
+                    @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                        String endpoint = String.valueOf(parent.getItemAtPosition(position));
+                        apiClient.userKeyExpiry(endpoint, new ApiClient.Callback<JSONObject>() {
+                            @Override public void onSuccess(JSONObject value) {
+                                String expiry = value.optString("expiresAt", "");
+                                keyStatus.setText(expiry.isEmpty() ? "No saved key or key never expires." : "Key status: expires " + expiry);
+                            }
+                            @Override public void onError(Exception error) { keyStatus.setText("Key status unavailable: " + friendlyError(error)); }
+                        });
+                    }
+                    @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+                };
+                keyEndpointSpinner.setOnItemSelectedListener(listener);
+            }
+            @Override public void onError(Exception error) { keyStatus.setText("Provider list unavailable: " + friendlyError(error)); }
+        });
+        saveKey.setOnClickListener(v -> {
+            String endpoint = String.valueOf(keyEndpointSpinner.getSelectedItem());
+            String value = providerKey.getText().toString().trim();
+            if (endpoint.isEmpty() || value.isEmpty()) {
+                keyStatus.setText("Choose an endpoint and enter a key.");
+                return;
+            }
+            saveKey.setEnabled(false);
+            apiClient.saveUserKey(endpoint, value, System.currentTimeMillis() + (12L * 60L * 60L * 1000L), new ApiClient.Callback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) { saveKey.setEnabled(true); providerKey.setText(""); keyStatus.setText("Saved securely for 12 hours."); }
+                @Override public void onError(Exception error) { saveKey.setEnabled(true); keyStatus.setText(friendlyError(error)); }
+            });
+        });
+        revokeKey.setOnClickListener(v -> {
+            String endpoint = String.valueOf(keyEndpointSpinner.getSelectedItem());
+            if (endpoint.isEmpty()) return;
+            revokeKey.setEnabled(false);
+            apiClient.revokeUserKey(endpoint, new ApiClient.Callback<JSONObject>() {
+                @Override public void onSuccess(JSONObject result) { revokeKey.setEnabled(true); keyStatus.setText("Provider key revoked."); }
+                @Override public void onError(Exception error) { revokeKey.setEnabled(true); keyStatus.setText(friendlyError(error)); }
+            });
+        });
+
         android.widget.Switch theme = new android.widget.Switch(this);
         theme.setText(getString(R.string.theme));
         theme.setTextColor(getColor(R.color.tezgpt_text));
