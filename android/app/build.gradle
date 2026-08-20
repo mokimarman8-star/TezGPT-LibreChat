@@ -1,8 +1,7 @@
 apply plugin: 'com.android.application'
 
-// Recovered from the previously working legacy Capacitor configuration.
-// Override with -PTEZGPT_API_BASE_URL=https://your-owned-domain.example for production.
-def tezGptApiBaseUrl = project.findProperty("TEZGPT_API_BASE_URL") ?: "https://chat.librechat.ai"
+// Native TezGPT client default endpoint; override with -PTEZGPT_API_BASE_URL for another HTTPS deployment.
+def tezGptApiBaseUrl = project.findProperty("TEZGPT_API_BASE_URL") ?: "https://tezgpt.onrender.com"
 
 def apiUrlBuildValue = "\"${tezGptApiBaseUrl}\""
 

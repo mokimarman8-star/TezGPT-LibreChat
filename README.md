@@ -262,13 +262,15 @@ We thank [Locize](https://locize.com) for their translation management tools tha
 
 ## Android app from this same repository
 
-This repository now includes a Capacitor Android wrapper under `android/`. It loads the existing LibreChat web application without redesigning or duplicating the client UI. Set `LIBRECHAT_SERVER_URL` to the HTTPS URL of the running LibreChat deployment, then build the mobile package:
+This repository includes a fully native Java Android application under `android/`. It does not use WebView, Capacitor, Cordova, or a remote HTML runtime. The native client connects to the user-owned TezGPT API over HTTPS and provides native authentication, chat streaming, endpoint/model selection, and the TezGPT application shell:
 
 ```bash
-npm ci
-LIBRECHAT_SERVER_URL=https://your-librechat.example npm run mobile:sync
 cd android
-./gradlew assembleRelease
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+export ANDROID_HOME=/home/ubuntu/android-sdk
+./gradlew clean test assembleDebug assembleRelease \
+  -PTEZGPT_API_BASE_URL=https://tezgpt.onrender.com \
+  --no-daemon
 ```
 
-The default URL is `https://chat.librechat.ai`; set `LIBRECHAT_SERVER_URL` for a different deployment. Android release automation is defined in `.github/workflows/android-release.yml` and runs from this same repository.
+The default server URL is `https://tezgpt.onrender.com`; override it with `-PTEZGPT_API_BASE_URL=https://your-owned-tezgpt-domain.example` for another HTTPS deployment. Android release automation is defined in `.github/workflows/android-release.yml` and runs from this same repository.

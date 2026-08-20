@@ -9,13 +9,13 @@ permissions:
   contents: write
 
 env:
-  LIBRECHAT_SERVER_URL: ${{ vars.LIBRECHAT_SERVER_URL || 'https://chat.librechat.ai' }}
+  LIBRECHAT_SERVER_URL: ${{ vars.LIBRECHAT_SERVER_URL || 'https://tezgpt.onrender.com' }}
 
 jobs:
   android:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the existing LibreChat project
+      - name: Check out the TezGPT project
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -32,10 +32,10 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Install the existing web project dependencies
+      - name: Install the TezGPT web project dependencies
         run: npm ci
 
-      - name: Build the existing LibreChat web frontend and sync Capacitor
+      - name: Build the TezGPT web frontend and sync Android project
         run: npm run mobile:sync
 
       - name: Build Android APK
@@ -68,5 +68,5 @@ jobs:
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
             android/app/build/outputs/apk/release/app-release-unsigned.apk \
-            --title "LibreChat Android ${{ steps.version.outputs.tag }}" \
+            --title "TezGPT Android ${{ steps.version.outputs.tag }}" \
             --generate-notes

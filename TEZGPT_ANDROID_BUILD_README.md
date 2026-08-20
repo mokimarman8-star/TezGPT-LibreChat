@@ -4,18 +4,18 @@ TezGPT is the native Java Android client in `android/`. It uses the package `com
 
 ## Configure the server URL
 
-The server URL is injected at build time. The recovered default from the previously working legacy project is `https://chat.librechat.ai`, so the APK no longer opens with an empty-URL configuration error. Do not commit private server credentials or tokens into the Android project. For production, override the default with your own HTTPS TezGPT domain.
+The server URL is injected at build time. The current user-owned TezGPT staging server is `https://tezgpt.onrender.com`, so the APK connects to the clean TezGPT deployment instead of the old LibreChat-derived hostname. Do not commit private server credentials or tokens into the Android project. For production, override the default with your own HTTPS TezGPT domain.
 
 ```bash
 cd /home/ubuntu/LibreChat-native/android
 export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 export ANDROID_HOME=/home/ubuntu/android-sdk
 ./gradlew clean test assembleDebug \\
-  -PTEZGPT_API_BASE_URL=https://your-owned-tezgpt-domain.example \\
+  -PTEZGPT_API_BASE_URL=https://tezgpt.onrender.com \\
   --no-daemon
 ```
 
-The URL must use HTTPS. Cleartext HTTP is disabled by the manifest and `network_security_config.xml`. The recovered compatibility endpoint is the public LibreChat demo at `https://chat.librechat.ai`; it is not a user-owned production server. A self-hosted TezGPT deployment should replace it through `-PTEZGPT_API_BASE_URL=...`. The server must expose the authentication, configuration, conversation, chat, agent, and tool routes documented in the project server guide.
+The URL must use HTTPS. Cleartext HTTP is disabled by the manifest and `network_security_config.xml`. The verified user-owned staging endpoint is `https://tezgpt.onrender.com`. A self-hosted production TezGPT deployment can replace it through `-PTEZGPT_API_BASE_URL=...`. The server must expose the authentication, configuration, conversation, chat, agent, and tool routes documented in the project server guide.
 
 ## Release build
 
@@ -23,7 +23,7 @@ The release build is R8-shrunk and resource-shrunk but intentionally unsigned in
 
 ```bash
 ./gradlew clean test assembleDebug assembleRelease \
-  -PTEZGPT_API_BASE_URL=https://your-real-tezgpt-domain.example \
+  -PTEZGPT_API_BASE_URL=https://tezgpt.onrender.com \
   --no-daemon
 ```
 
