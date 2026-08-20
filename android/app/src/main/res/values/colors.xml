@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tezgpt_green">#10A37F</color>
+    <color name="tezgpt_green_dark">#0E8F70</color>
+    <color name="tezgpt_background">#FFFFFF</color>
+    <color name="tezgpt_surface">#F7F7F8</color>
+    <color name="tezgpt_surface_alt">#ECECF1</color>
+    <color name="tezgpt_text">#202123</color>
+    <color name="tezgpt_text_muted">#6E6E80</color>
+    <color name="tezgpt_border">#D9D9E3</color>
+    <color name="tezgpt_error">#D92D20</color>
+    <color name="tezgpt_white">#FFFFFF</color>
+</resources>

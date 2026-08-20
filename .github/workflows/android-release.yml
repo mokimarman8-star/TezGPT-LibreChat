@@ -1,0 +1,72 @@
+name: Android release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  LIBRECHAT_SERVER_URL: ${{ vars.LIBRECHAT_SERVER_URL || 'https://chat.librechat.ai' }}
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the existing LibreChat project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install the existing web project dependencies
+        run: npm ci
+
+      - name: Build the existing LibreChat web frontend and sync Capacitor
+        run: npm run mobile:sync
+
+      - name: Build Android APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Calculate mobile release tag
+        id: version
+        shell: bash
+        run: |
+          git fetch --tags --force
+          latest="$(git tag --list 'mobile-v*' --sort=-v:refname | head -n 1)"
+          if [[ -z "$latest" ]]; then
+            next="mobile-v0.1.0"
+          else
+            version="${latest#mobile-v}"
+            IFS='.' read -r major minor patch <<< "$version"
+            next="mobile-v${major}.${minor}.$((patch + 1))"
+          fi
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Create mobile tag
+        run: |
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Publish APK release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk \
+            --title "LibreChat Android ${{ steps.version.outputs.tag }}" \
+            --generate-notes

@@ -1,0 +1,58 @@
+apply plugin: 'com.android.application'
+
+// Recovered from the previously working legacy Capacitor configuration.
+// Override with -PTEZGPT_API_BASE_URL=https://your-owned-domain.example for production.
+def tezGptApiBaseUrl = project.findProperty("TEZGPT_API_BASE_URL") ?: "https://chat.librechat.ai"
+
+def apiUrlBuildValue = "\"${tezGptApiBaseUrl}\""
+
+android {
+    namespace = "com.tezgpt.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        applicationId "com.tezgpt.app"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "TEZGPT_API_BASE_URL", apiUrlBuildValue
+        buildConfigField "String", "TEZGPT_APP_NAME", "\"TezGPT\""
+    }
+
+    buildTypes {
+        debug {
+            buildConfigField "String", "TEZGPT_API_BASE_URL", apiUrlBuildValue
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            buildConfigField "String", "TEZGPT_API_BASE_URL", apiUrlBuildValue
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.activity:activity:1.10.1"
+    implementation "androidx.fragment:fragment:$androidxFragmentVersion"
+    implementation "androidx.recyclerview:recyclerview:1.4.0"
+    implementation "androidx.drawerlayout:drawerlayout:1.2.0"
+    implementation "androidx.core:core-ktx:1.16.0"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.work:work-runtime:2.10.1"
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+}

@@ -1,0 +1,191 @@
+name: Auto Tag Release and Build Images
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment for a manually started release
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: auto-release-main
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  release:
+    name: Create version tag and GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      stable: ${{ steps.version.outputs.stable }}
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Calculate next semantic version
+        id: version
+        env:
+          REQUESTED_BUMP: ${{ inputs.bump || 'patch' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+          stable_tag="$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          if [[ -z "$stable_tag" ]]; then
+            stable_tag="v0.0.0"
+            commit_range="HEAD"
+          else
+            commit_range="${stable_tag}..HEAD"
+          fi
+
+          bump="$REQUESTED_BUMP"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            messages="$(git log --format='%s%n%b' "$commit_range" 2>/dev/null || true)"
+            if grep -Eq '(^|[^[:alnum:]])BREAKING[ -]CHANGE([^[:alnum:]]|$)|^[^:]+!:' <<< "$messages"; then
+              bump="major"
+            elif grep -Eq '^feat(\([^)]*\))?!?:' <<< "$messages"; then
+              bump="minor"
+            else
+              bump="patch"
+            fi
+          fi
+
+          base="${stable_tag#v}"
+          IFS='.' read -r major minor patch <<< "$base"
+          case "$bump" in
+            major) major=$((10#$major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((10#$minor + 1)); patch=0 ;;
+            patch) patch=$((10#$patch + 1)) ;;
+            *) echo "Unsupported version increment: $bump" >&2; exit 1 ;;
+          esac
+
+          version="${major}.${minor}.${patch}"
+          tag="v${version}"
+          if git ls-remote --exit-code --refs origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists on origin; refusing to overwrite it." >&2
+            exit 1
+          fi
+
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "stable=true"
+          } >> "$GITHUB_OUTPUT"
+          echo "Creating ${tag} from ${GITHUB_SHA} using a ${bump} increment after ${stable_tag}."
+
+      - name: Push annotated version tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "$TAG" --message "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "LibreChat $TAG" \
+            --generate-notes
+
+  build:
+    name: Build and publish ${{ matrix.image_name }}
+    needs: release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: api-build
+            file: Dockerfile.multi
+            image_name: librechat-api
+          - target: node
+            file: Dockerfile
+            image_name: librechat
+    steps:
+      - name: Checkout released tag
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Prepare environment
+        run: cp .env.example .env
+
+      - name: Compute build metadata and image tags
+        id: metadata
+        env:
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+          IMAGE_NAME: ${{ matrix.image_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="${REGISTRY}/${owner}/${IMAGE_NAME}"
+          {
+            echo "BUILD_COMMIT=${GITHUB_SHA}"
+            echo "BUILD_BRANCH=${GITHUB_REF_NAME}"
+            echo "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          } >> "$GITHUB_ENV"
+          {
+            echo 'tags<<EOF'
+            printf '%s:%s\n' "$image" "$RELEASE_TAG"
+            printf '%s:%s\n' "$image" "${GITHUB_SHA}"
+            printf '%s:latest\n' "$image"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish multi-architecture image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          build-args: |
+            BUILD_COMMIT=${{ env.BUILD_COMMIT }}
+            BUILD_BRANCH=${{ env.BUILD_BRANCH }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
