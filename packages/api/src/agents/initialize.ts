@@ -80,6 +80,15 @@ import { filterFilesByEndpointConfig } from '~/files';
 import { generateArtifactsPrompt } from '~/prompts';
 import { getProviderConfig } from '~/endpoints';
 import { primeResources } from './resources';
+import {
+  applySingleMasterPolicy,
+  buildMasterAgentInstructions,
+  createMasterAgentRuntime,
+  resolveMasterAgentPolicy,
+  isDelegationToolName,
+  type MasterAgentRuntime,
+  type MasterAgentPolicy,
+} from './masterAgent';
 
 /**
  * Fraction of context budget reserved as headroom when no explicit maxContextTokens is set.
@@ -317,6 +326,8 @@ export type InitializedAgent = Agent & {
   maxToolResultChars?: number;
   /** Response field to read model reasoning from for custom OpenAI-compatible endpoints. */
   reasoningKey?: ReasoningResponseKey;
+  /** Single-master runtime metadata and policy for backend orchestration. */
+  masterAgent?: MasterAgentRuntime;
   /** Whether to reconstruct `reasoning_content` from persisted history across turns (custom endpoint opt-in). */
   includeReasoningHistory?: boolean;
   /**
@@ -612,6 +623,14 @@ export async function initializeAgent(
     allowedProviders,
     isInitialAgent = false,
   } = params;
+  const masterAgentPolicy: MasterAgentPolicy = resolveMasterAgentPolicy(req.config);
+  if (masterAgentPolicy.enabled) {
+    applySingleMasterPolicy(agent, masterAgentPolicy);
+    if (params.memoryAvailable === true && !(agent.tools ?? []).includes(Tools.memory)) {
+      agent.tools = [...(agent.tools ?? []), Tools.memory];
+    }
+  }
+
   const requestFileOwnerId = req.user?.id;
   const requestFileOwnerScope: FileOwnerScope | undefined = requestFileOwnerId
     ? { userId: requestFileOwnerId, tenantId: req.user?.tenantId }
@@ -1107,7 +1126,7 @@ export async function initializeAgent(
     requestScopedConnections,
     hasDeferredTools,
     actionsEnabled,
-    tools: structuredTools,
+    tools: loadedStructuredTools,
     primedCodeFiles,
   } = loadToolsResult ?? {
     tools: [],
@@ -1124,6 +1143,15 @@ export async function initializeAgent(
   };
 
   let toolDefinitions = loadedToolDefinitions;
+  let effectiveStructuredTools = loadedStructuredTools;
+  if (masterAgentPolicy.enabled && !masterAgentPolicy.allowSubagents) {
+    effectiveStructuredTools = effectiveStructuredTools?.filter(
+      (tool) => !isDelegationToolName(getToolName(tool) ?? ''),
+    );
+    toolDefinitions = toolDefinitions?.filter(
+      (toolDefinition) => !isDelegationToolName(toolDefinition.name),
+    );
+  }
 
   /**
    * Tolerant filter: anything `loadTools` couldn't resolve (capability
@@ -1369,7 +1397,7 @@ export async function initializeAgent(
   }
 
   /** Check for tool presence from either full instances or definitions (event-driven mode) */
-  const hasAgentTools = (structuredTools?.length ?? 0) > 0 || (toolDefinitions?.length ?? 0) > 0;
+  const hasAgentTools = (effectiveStructuredTools?.length ?? 0) > 0 || (toolDefinitions?.length ?? 0) > 0;
   const providerTools = resolveProviderToolConflicts({
     provider: agent.provider,
     tools: options.tools,
@@ -1379,7 +1407,7 @@ export async function initializeAgent(
 
   let tools: GenericTool[] = hasProviderTools
     ? (providerTools as GenericTool[])
-    : (structuredTools ?? []);
+    : (effectiveStructuredTools ?? []);
 
   if (isGoogleToolCombinationProvider(agent.provider) && hasProviderTools && hasAgentTools) {
     assertGoogleToolCombinationSupport(llmConfig.model);
@@ -1392,17 +1420,17 @@ export async function initializeAgent(
     ) {
       enableGoogleServerSideToolInvocations({ agent, llmConfig });
     }
-    if (structuredTools?.length) {
-      tools = structuredTools.concat(providerTools as GenericTool[]);
+    if (effectiveStructuredTools?.length) {
+      tools = effectiveStructuredTools.concat(providerTools as GenericTool[]);
     }
   } else if (
     (agent.provider === Providers.OPENAI ||
       agent.provider === Providers.AZURE ||
       agent.provider === Providers.ANTHROPIC) &&
     hasProviderTools &&
-    structuredTools?.length
+    effectiveStructuredTools?.length
   ) {
-    tools = structuredTools.concat(providerTools as GenericTool[]);
+    tools = effectiveStructuredTools.concat(providerTools as GenericTool[]);
   }
 
   agent.model_parameters = { ...options.llmConfig } as Agent['model_parameters'];
@@ -1499,7 +1527,18 @@ export async function initializeAgent(
   toolDefinitions = intentSanitized.toolDefinitions;
 
   const hasFinalAgentTools =
-    (structuredTools?.length ?? 0) > 0 || (toolDefinitions?.length ?? 0) > 0;
+    (effectiveStructuredTools?.length ?? 0) > 0 || (toolDefinitions?.length ?? 0) > 0;
+
+  const masterAgentToolNames = [
+    ...(toolDefinitions ?? []).map((toolDefinition) => toolDefinition.name),
+    ...(effectiveStructuredTools ?? []).map((tool) => getToolName(tool)).filter((name): name is string => Boolean(name)),
+  ];
+  const masterAgent = masterAgentPolicy.enabled
+    ? createMasterAgentRuntime(masterAgentPolicy, masterAgentToolNames)
+    : undefined;
+  if (masterAgent) {
+    appendAdditionalInstructions(agent, buildMasterAgentInstructions(masterAgentPolicy));
+  }
   if (isGoogleToolCombinationProvider(agent.provider) && hasProviderTools && hasFinalAgentTools) {
     assertGoogleToolCombinationSupport(llmConfig.model);
     if (
@@ -1591,6 +1630,7 @@ export async function initializeAgent(
         : Math.max(1024, Math.round(baseContextTokens * (1 - DEFAULT_RESERVE_RATIO))),
     primedCodeFiles,
     endpointTokenConfig: options.endpointTokenConfig,
+    masterAgent,
   };
 
   return initializedAgent;

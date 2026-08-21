@@ -46,3 +46,16 @@ The current live config intentionally does not advertise password recovery or so
 ## Known Validation Boundaries
 
 The repository workflow performs a clean build and deploy. The public sign-up and login routing has been verified after deployment. A full successful login, provider-key submission, model response, password-reset email, or social OAuth callback requires an authenticated account and, for mail/OAuth, the required real provider credentials. No test accounts, mock mail service, fake Google button, or fabricated model catalog have been added.
+
+## Added DeerFlow-Inspired Master-Agent Backend
+
+| Capability | TezGPT implementation | UI impact | Safety boundary |
+|---|---|---|---|
+| Single master agent | `packages/api/src/agents/masterAgent.ts` and `initialize.ts` compose one runtime catalog and disable delegation tools by default | None | The operator can explicitly re-enable subagents. |
+| Short-term memory | Existing conversation messages, run state, code-session state, and artifacts | None | Context windows, summaries, and existing run limits remain authoritative. |
+| Long-term memory | Existing permissioned `packages/api/src/agents/memory.ts` with formatted retrieval, token limits, `set_memory`, and `delete_memory` | None | User opt-out, role permissions, configured valid keys, and token limits remain enforced. |
+| Tool orchestration | Existing built-in, provider, skills, code, and MCP tool registries are de-duplicated into one catalog | None | Capability checks and MCP access controls remain in force. |
+| Sandbox execution | Existing `bash_tool`, `read_file`, file authoring, artifacts, and stateful code sessions are reused | None | The host runtime, environment selection, timeout, file limits, and approval gates remain authoritative. |
+| Planning and verification | Master-agent instructions create bounded internal planning and verification behavior | None | Maximum plan steps, tool calls, and execution time are configurable and clamped. |
+
+This integration ports DeerFlow’s architecture patterns rather than copying its source code. See `docs/tezgpt-master-agent.md` for the complete implementation and provenance note.

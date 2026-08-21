@@ -19,6 +19,7 @@ export * from './initialize';
 export * from './legacy';
 export * from './lazySubagents';
 export * from './memory';
+export * from './masterAgent';
 export * from './orphans';
 export * from './migration';
 export * from './parameters';
