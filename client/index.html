@@ -34,7 +34,7 @@
       let backgroundColor;
 
       if (theme === 'dark') {
-        backgroundColor = '#0d0d0d';
+        backgroundColor = '#171717';
       } else if (theme === 'light') {
         backgroundColor = '#ffffff';
       } else if (theme === 'system') {
@@ -44,8 +44,27 @@
         backgroundColor = '#ffffff';
       }
 
+      document.documentElement.style.backgroundColor = backgroundColor;
+
       loadingContainerStyle.innerHTML = `
-        #loading-container {
+        html,
+        body,
+        #root {
+          background-color: ${backgroundColor};
+        }
+        #tezgpt-boot-shell {
+          position: fixed;
+          inset: 0;
+          z-index: 2147483647;
+          opacity: 1;
+          pointer-events: auto;
+          transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+        }
+        #tezgpt-boot-shell.tezgpt-boot-shell--exit {
+          opacity: 0;
+          pointer-events: none;
+        }
+        #tezgpt-boot-shell #loading-container {
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -56,7 +75,7 @@
           font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           text-align: center;
         }
-        #loading-container .tezgpt-boot-mark {
+        #tezgpt-boot-shell .tezgpt-boot-mark {
           width: 42px;
           height: 42px;
           margin-bottom: 18px;
@@ -65,13 +84,13 @@
           box-shadow: inset 0 0 0 7px ${backgroundColor};
           transform: rotate(45deg);
         }
-        #loading-container .tezgpt-boot-name {
+        #tezgpt-boot-shell .tezgpt-boot-name {
           font-size: 22px;
           font-weight: 800;
           letter-spacing: 0.18em;
           margin-left: 0.18em;
         }
-        #loading-container .tezgpt-boot-status {
+        #tezgpt-boot-shell .tezgpt-boot-status {
           margin-top: 10px;
           color: #10a37f;
           font-size: 12px;
@@ -80,7 +99,7 @@
           text-transform: uppercase;
         }
         @media (prefers-reduced-motion: no-preference) {
-          #loading-container .tezgpt-boot-mark {
+          #tezgpt-boot-shell .tezgpt-boot-mark {
             animation: tezgpt-boot-pulse 1.5s ease-in-out infinite;
           }
         }
@@ -90,6 +109,18 @@
         }
       `;
       document.head.appendChild(loadingContainerStyle);
+
+      window.addEventListener('tezgpt:app-ready', function () {
+        var shell = document.getElementById('tezgpt-boot-shell');
+        if (!shell || shell.dataset.dismissed === 'true') {
+          return;
+        }
+        shell.dataset.dismissed = 'true';
+        shell.classList.add('tezgpt-boot-shell--exit');
+        window.setTimeout(function () {
+          shell.remove();
+        }, 220);
+      });
     </script>
     <script>
       (function () {
@@ -233,7 +264,8 @@
     <script defer type="module" src="/src/main.jsx"></script>
   </head>
   <body>
-    <div id="root">
+    <div id="root"></div>
+    <div id="tezgpt-boot-shell" role="status" aria-live="polite">
       <div id="loading-container" role="status" aria-live="polite">
         <div class="tezgpt-boot-mark" aria-hidden="true"></div>
         <div class="tezgpt-boot-name">TEZGPT</div>

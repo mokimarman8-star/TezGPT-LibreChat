@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { ThemeSelector } from '@librechat/client';
 import { TStartupConfig } from 'librechat-data-provider';
 import { ErrorMessage } from '~/components/Auth/ErrorMessage';
@@ -25,6 +26,16 @@ function AuthLayout({
   error: TranslationKeys | null;
 }) {
   const localize = useLocalize();
+
+  useEffect(() => {
+    let revealFrame = window.requestAnimationFrame(() => {
+      revealFrame = window.requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('tezgpt:app-ready'));
+      });
+    });
+
+    return () => window.cancelAnimationFrame(revealFrame);
+  }, []);
 
   const hasStartupConfigError = startupConfigError !== null && startupConfigError !== undefined;
   const DisplayError = () => {
