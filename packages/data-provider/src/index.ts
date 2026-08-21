@@ -43,6 +43,7 @@ export {
   loginPage,
   registerPage,
   apiBaseUrl,
+  stripClientBasePath,
   sharedFileDownload,
   buildLoginRedirectUrl,
 } from './api-endpoints';
