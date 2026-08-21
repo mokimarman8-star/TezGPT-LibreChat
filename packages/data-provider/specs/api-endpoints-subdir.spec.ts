@@ -12,10 +12,17 @@
  * instead of mocking the global, since jsdom 26+ does not allow redefining it.
  */
 
-function loadModuleWithBase(baseHref: string) {
+function loadModuleWithBase(baseHref: string, apiOrigin?: string) {
   const base = document.createElement('base');
   base.setAttribute('href', baseHref);
   document.head.appendChild(base);
+
+  const apiOriginMeta = apiOrigin ? document.createElement('meta') : undefined;
+  if (apiOriginMeta) {
+    apiOriginMeta.setAttribute('name', 'tezgpt-api-origin');
+    apiOriginMeta.setAttribute('content', apiOrigin);
+    document.head.appendChild(apiOriginMeta);
+  }
 
   const proc = process as typeof process & { browser?: boolean };
   const originalBrowser = proc.browser;
@@ -30,6 +37,7 @@ function loadModuleWithBase(baseHref: string) {
     return mod!;
   } finally {
     proc.browser = originalBrowser;
+    apiOriginMeta?.remove();
     document.head.removeChild(base);
   }
 }
@@ -136,5 +144,29 @@ describe('buildLoginRedirectUrl — deep subdirectory (BASE_URL = /app/chat)', (
     const result = buildLoginRedirectUrl('/app/chatroom/page', '', '');
     const redirectTo = decodeURIComponent(result.split('redirect_to=')[1]);
     expect(redirectTo).toBe('/app/chatroom/page');
+  });
+});
+
+describe('GitHub Pages browser base with a separate TezGPT API origin', () => {
+  let apiBaseUrl: typeof import('../src/api-endpoints').apiBaseUrl;
+  let buildLoginRedirectUrl: typeof import('../src/api-endpoints').buildLoginRedirectUrl;
+  let stripClientBasePath: typeof import('../src/api-endpoints').stripClientBasePath;
+
+  beforeAll(() => {
+    const mod = loadModuleWithBase('/TezGPT-LibreChat/', 'https://tezgpt.onrender.com');
+    apiBaseUrl = mod.apiBaseUrl;
+    buildLoginRedirectUrl = mod.buildLoginRedirectUrl;
+    stripClientBasePath = mod.stripClientBasePath;
+  });
+
+  it('keeps API requests on Render while stripping the GitHub Pages route prefix', () => {
+    expect(apiBaseUrl()).toBe('https://tezgpt.onrender.com');
+    expect(stripClientBasePath('/TezGPT-LibreChat/c/new')).toBe('/c/new');
+  });
+
+  it('creates a router-safe login redirect without duplicating the Pages base path', () => {
+    const result = buildLoginRedirectUrl('/TezGPT-LibreChat/c/new', '?model=gemini', '');
+    const redirectTo = decodeURIComponent(result.split('redirect_to=')[1]);
+    expect(redirectTo).toBe('/c/new?model=gemini');
   });
 });

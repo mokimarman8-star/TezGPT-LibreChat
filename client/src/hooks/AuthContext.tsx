@@ -11,11 +11,11 @@ import { debounce } from 'lodash';
 import { useRecoilState, useSetRecoilState } from 'recoil';
 import { useNavigate } from 'react-router-dom';
 import {
-  apiBaseUrl,
   SystemRoles,
   setTokenHeader,
   isSystemRoleName,
   buildLoginRedirectUrl,
+  stripClientBasePath,
 } from 'librechat-data-provider';
 import type * as t from 'librechat-data-provider';
 import type { ReactNode } from 'react';
@@ -94,7 +94,7 @@ const AuthContextProvider = ({
           return;
         }
 
-        navigate(finalRedirect, { replace: true });
+        navigate(stripClientBasePath(finalRedirect), { replace: true });
       }, 50),
     [navigate, setUser, setQueriesEnabled],
   );
@@ -188,12 +188,8 @@ const AuthContextProvider = ({
         if (token) {
           const storedRedirect = sessionStorage.getItem(SESSION_KEY);
           sessionStorage.removeItem(SESSION_KEY);
-          const baseUrl = apiBaseUrl();
           const rawPath = window.location.pathname;
-          const strippedPath =
-            baseUrl && (rawPath === baseUrl || rawPath.startsWith(baseUrl + '/'))
-              ? rawPath.slice(baseUrl.length) || '/'
-              : rawPath;
+          const strippedPath = stripClientBasePath(rawPath);
           const currentUrl = `${strippedPath}${window.location.search}`;
           const fallbackRedirect = isSafeRedirect(currentUrl) ? currentUrl : '/c/new';
           const redirect =

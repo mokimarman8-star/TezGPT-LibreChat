@@ -4,10 +4,17 @@ import { ResourceType } from './accessPermissions';
 import * as q from './types/queries';
 
 let BASE_URL = '';
+let CLIENT_BASE_PATH = '';
 if (
   typeof process === 'undefined' ||
   (process as typeof process & { browser?: boolean }).browser === true
 ) {
+  const baseEl = document.querySelector('base');
+  CLIENT_BASE_PATH = baseEl?.getAttribute('href') || '/';
+  if (CLIENT_BASE_PATH.endsWith('/')) {
+    CLIENT_BASE_PATH = CLIENT_BASE_PATH.slice(0, -1);
+  }
+
   // GitHub Pages serves the static client from a different origin. In that build
   // mode, route authenticated API calls to the configured HTTPS TezGPT server
   // while retaining the page base for client assets and router navigation.
@@ -20,8 +27,7 @@ if (
   }
   // The normal single-origin deployment uses the document base, if it exists.
   if (!BASE_URL) {
-  const baseEl = document.querySelector('base');
-    BASE_URL = baseEl?.getAttribute('href') || '/';
+    BASE_URL = CLIENT_BASE_PATH || '/';
   }
 }
 
@@ -30,6 +36,27 @@ if (BASE_URL && BASE_URL.endsWith('/')) {
 }
 
 export const apiBaseUrl = () => BASE_URL;
+
+/** The browser-router basename, which may differ from the HTTPS API origin. */
+export const clientBasePath = () => CLIENT_BASE_PATH;
+
+/**
+ * Convert a document pathname into a React Router pathname. GitHub Pages has
+ * a repository subpath while API calls point at Render, so `apiBaseUrl()`
+ * cannot be used to remove the browser-router prefix after login.
+ */
+export const stripClientBasePath = (pathname: string): string => {
+  if (!CLIENT_BASE_PATH) {
+    return pathname;
+  }
+  if (pathname === CLIENT_BASE_PATH) {
+    return '/';
+  }
+  if (pathname.startsWith(`${CLIENT_BASE_PATH}/`)) {
+    return pathname.slice(CLIENT_BASE_PATH.length) || '/';
+  }
+  return pathname;
+};
 
 // Testing this buildQuery function
 const buildQuery = (params: Record<string, unknown>): string => {
@@ -211,10 +238,7 @@ export function buildLoginRedirectUrl(pathname?: string, search?: string, hash?:
   const s = search ?? window.location.search;
   const h = hash ?? window.location.hash;
 
-  const stripped =
-    BASE_URL && (p === BASE_URL || p.startsWith(BASE_URL + '/'))
-      ? p.slice(BASE_URL.length) || '/'
-      : p;
+  const stripped = stripClientBasePath(p);
   const currentPath = `${stripped}${s}${h}`;
   if (!currentPath || currentPath === '/') {
     return '/login';
